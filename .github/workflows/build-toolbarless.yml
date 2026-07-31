@@ -1,0 +1,139 @@
+name: Build Toolbarless Firefox
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    env:
+      FIREFOX_COMMIT: 079065d33b0b788f93395938d10660927761dceb
+      MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
+
+    steps:
+      - name: Show available storage
+        run: df -h
+
+      - name: Download Firefox source
+        run: |
+          git init firefox
+          cd firefox
+          git remote add origin https://github.com/mozilla-firefox/firefox.git
+          git fetch --depth=1 --filter=blob:none origin "$FIREFOX_COMMIT"
+          git checkout --detach FETCH_HEAD
+
+      - name: Prepare Android build tools
+        working-directory: firefox
+        run: |
+          ./mach --no-interactive bootstrap \
+            --application-choice="GeckoView/Firefox for Android Artifact Mode"
+
+      - name: Build setup Firefox
+        working-directory: firefox
+        run: |
+          ./mach gradle fenix:assembleDebug
+
+          mkdir -p ../finished-apks
+
+          SETUP_APK="$(find . -type f -name '*.apk' \
+            ! -name '*androidTest*' \
+            | grep -E 'arm64-v8a|aarch64' \
+            | head -n 1)"
+
+          if [ -z "$SETUP_APK" ]; then
+            SETUP_APK="$(find . -type f -name '*.apk' \
+              ! -name '*androidTest*' \
+              | head -n 1)"
+          fi
+
+          if [ -z "$SETUP_APK" ]; then
+            echo "No setup APK was found."
+            exit 1
+          fi
+
+          echo "Setup APK: $SETUP_APK"
+          cp "$SETUP_APK" ../finished-apks/firefox-setup.apk
+
+      - name: Permanently hide the browsing toolbar
+        working-directory: firefox
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path(
+              "mobile/android/fenix/app/src/main/java/"
+              "org/mozilla/fenix/components/toolbar/"
+              "BrowserToolbarComposable.kt"
+          )
+
+          text = path.read_text()
+
+          old_init = """    init {
+                  container.addView(layout)
+                  setToolbarBehavior(settings.toolbarPosition)
+              }"""
+
+          new_init = """    init {
+                  layout.visibility = View.GONE
+                  container.addView(layout)
+                  setToolbarBehavior(settings.toolbarPosition)
+              }"""
+
+          old_visible = """    internal fun visible() {
+                  layout.isVisible = true
+              }"""
+
+          new_visible = """    internal fun visible() {
+                  layout.visibility = View.GONE
+              }"""
+
+          if old_init not in text:
+              raise SystemExit("Could not find the toolbar setup code.")
+
+          if old_visible not in text:
+              raise SystemExit("Could not find the toolbar visibility code.")
+
+          text = text.replace(old_init, new_init, 1)
+          text = text.replace(old_visible, new_visible, 1)
+          path.write_text(text)
+
+          print("Toolbar-hiding modification applied successfully.")
+          PY
+
+      - name: Build locked Firefox
+        working-directory: firefox
+        run: |
+          ./mach gradle fenix:assembleDebug
+
+          LOCKED_APK="$(find . -type f -name '*.apk' \
+            ! -name '*androidTest*' \
+            | grep -E 'arm64-v8a|aarch64' \
+            | head -n 1)"
+
+          if [ -z "$LOCKED_APK" ]; then
+            LOCKED_APK="$(find . -type f -name '*.apk' \
+              ! -name '*androidTest*' \
+              | head -n 1)"
+          fi
+
+          if [ -z "$LOCKED_APK" ]; then
+            echo "No locked APK was found."
+            exit 1
+          fi
+
+          echo "Locked APK: $LOCKED_APK"
+          cp "$LOCKED_APK" ../finished-apks/firefox-toolbarless.apk
+
+      - name: Create checksums
+        run: |
+          cd finished-apks
+          sha256sum *.apk > SHA256SUMS.txt
+          ls -lh
+
+      - name: Save both Firefox APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolbarless-firefox-apks
+          path: finished-apks/
