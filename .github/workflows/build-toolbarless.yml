@@ -29,7 +29,7 @@ jobs:
         run: |
           ./mach --no-interactive bootstrap \
             --application-choice="GeckoView/Firefox for Android Artifact Mode"
-
+          ./mach build
       - name: Build setup Firefox
         working-directory: firefox
         run: |
