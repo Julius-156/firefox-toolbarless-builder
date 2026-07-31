@@ -142,6 +142,10 @@ jobs:
         working-directory: firefox
         run: |
           git checkout -- mobile/android/fenix/app/src/main/java/org/mozilla/fenix/components/toolbar/BrowserToolbarComposable.kt
+          ./mach clobber
+          sed -i '/^ac_add_options --target=/d' mozconfig
+          echo 'ac_add_options --target=x86_64-linux-android' >> mozconfig
+          ./mach build
           ./mach gradle fenix:assembleDebug
       - name: Enable KVM for Android emulator
         run: |
@@ -157,7 +161,7 @@ jobs:
           target: google_apis
           disable-animations: true
           script: |
-            APK="$(find firefox -type f -name '*x86_64*.apk' ! -name '*androidTest*' | head -n 1)"
+            APK="$(find firefox -type f -name 'fenix-x86_64-debug.apk' | head -n 1)"
             echo "Emulator APK: $APK"
             test -n "$APK"
             adb install -r "$APK"
@@ -165,7 +169,7 @@ jobs:
             adb shell monkey -p org.mozilla.fenix.debug -c android.intent.category.LAUNCHER 1
             sleep 20
             adb logcat -d -v threadtime > firefox-emulator-log.txt
-            if ! adb shell pidof org.mozilla.fenix.debug >/dev/null; then
+            if ! adb shell dumpsys activity activities | grep -Eq '(mResumedActivity|topResumedActivity).*org\.mozilla\.fenix\.debug'; then
               echo "Firefox exited during startup."
               cat firefox-emulator-log.txt
               exit 1
