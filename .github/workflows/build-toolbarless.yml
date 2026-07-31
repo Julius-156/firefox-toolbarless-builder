@@ -170,11 +170,11 @@ jobs:
             sleep 20
             adb logcat -d -v threadtime > firefox-emulator-log.txt
             if ! adb shell dumpsys activity activities | grep -Eq '(mResumedActivity|topResumedActivity).*org\.mozilla\.fenix\.debug'; then
-              echo "Firefox exited during startup."
+              echo "Firefox is not in the foreground after 20 seconds."
               cat firefox-emulator-log.txt
               exit 1
             fi
-            echo "Firefox remained open for 20 seconds."
+            echo "Firefox is in the foreground after 20 seconds."
 
       - name: Upload emulator log
         if: always()
