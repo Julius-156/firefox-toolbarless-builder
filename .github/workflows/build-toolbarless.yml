@@ -161,7 +161,7 @@ jobs:
           target: google_apis
           disable-animations: true
           script: |
-            APK="$(find firefox -type f -name 'fenix-x86_64-debug.apk' | head -n 1)"
+            APK="$(find "$GITHUB_WORKSPACE" -type f -name 'app-x86_64-debug.apk' -print -quit)"
             echo "Emulator APK: $APK"
             test -n "$APK"
             adb install -r "$APK"
