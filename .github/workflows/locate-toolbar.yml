@@ -1,0 +1,43 @@
+name: Locate Firefox Toolbar Code
+
+on:
+  workflow_dispatch:
+
+jobs:
+  locate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Firefox Android files
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/mozilla-firefox/firefox.git firefox
+          cd firefox
+          git sparse-checkout set mobile/android/fenix mobile/android/android-components
+
+      - name: Create toolbar report
+        run: |
+          cd firefox
+          {
+            echo "Firefox commit:"
+            git rev-parse HEAD
+            echo
+            echo "Files whose names mention toolbar:"
+            find mobile/android/fenix mobile/android/android-components -type f \
+              | grep -i toolbar \
+              | sort \
+              | head -n 400 || true
+            echo
+            echo "Likely toolbar code:"
+            grep -RInE \
+              --include='*.kt' \
+              --include='*.xml' \
+              'BrowserToolbar|browserToolbar|toolbarContainer|ToolbarPosition|hideToolbar|toolbarVisibility' \
+              mobile/android/fenix mobile/android/android-components \
+              | head -n 1000 || true
+          } > ../toolbar-report.txt
+
+      - name: Save toolbar report
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolbar-report
+          path: toolbar-report.txt
