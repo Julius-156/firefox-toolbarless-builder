@@ -137,3 +137,45 @@ jobs:
         with:
           name: toolbarless-firefox-apks
           path: finished-apks/
+
+      - name: Rebuild unmodified Firefox for emulator
+        working-directory: firefox
+        run: |
+          git checkout -- mobile/android/fenix/app/src/main/java/org/mozilla/fenix/components/toolbar/BrowserToolbarComposable.kt
+          ./mach gradle fenix:assembleDebug
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test unmodified Firefox in Android emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            APK="$(find firefox -type f -name '*x86_64*.apk' ! -name '*androidTest*' | head -n 1)"
+            echo "Emulator APK: $APK"
+            test -n "$APK"
+            adb install -r "$APK"
+            adb logcat -c
+            adb shell monkey -p org.mozilla.fenix.debug -c android.intent.category.LAUNCHER 1
+            sleep 20
+            adb logcat -d -v threadtime > firefox-emulator-log.txt
+            if ! adb shell pidof org.mozilla.fenix.debug >/dev/null; then
+              echo "Firefox exited during startup."
+              cat firefox-emulator-log.txt
+              exit 1
+            fi
+            echo "Firefox remained open for 20 seconds."
+
+      - name: Upload emulator log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-emulator-log
+          path: firefox-emulator-log.txt
+          if-no-files-found: warn          
